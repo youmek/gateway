@@ -1,7 +1,7 @@
 {
   "name": "gateway",
   "version": "1.0.0",
-  "description": "api gateway",
+  "description": "Gateway acting as an entry point for client applications, routing requests to the appropriate backend microservices.",
   "main": "index.js",
   "scripts": {
     "start": "ts-node index.ts",

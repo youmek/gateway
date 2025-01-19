@@ -1,0 +1,104 @@
+name: Auto Release and Publish Docker
+
+permissions:
+  contents: write # Needed for release creation
+  pull-requests: write
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches:
+      - main # Trigger on direct pushes to `main`
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Step 2: Set up SSH key (if you need SSH for pushing)
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_GH_YM }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      # Step 3: Configure Git
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      # Step 4: Bump Version using npm version patch
+      - name: Patch Build version
+        if: github.ref == 'refs/heads/main'
+        run: |
+          npm version patch -m "Bump version to %s"
+
+      # Step 5: Extract the new version from package.json
+      - name: Extract new version from package.json
+        id: extract_version
+        run: |
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "next_version=$NEW_VERSION" >> $GITHUB_ENV
+          echo "New Version: $NEW_VERSION"
+
+      # Step 6: Log in to GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GH_PAT_YM }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # Step 7: Build Docker Image
+      - name: Build Docker Image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/$(basename ${{ github.repository }}):${{ env.next_version }} .
+
+      # Step 8: Push Docker Image
+      - name: Push Docker Image
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/$(basename ${{ github.repository }}):${{ env.next_version }}
+
+      # Step 9: Tag Docker Image as Latest (Optional)
+      - name: Tag Docker Image as Latest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker tag ghcr.io/${{ github.repository_owner }}/$(basename ${{ github.repository }}):${{ env.next_version }} ghcr.io/${{ github.repository_owner }}/$(basename ${{ github.repository }}):latest
+          docker push ghcr.io/${{ github.repository_owner }}/$(basename ${{ github.repository }}):latest
+
+      # Step 10: Push Git Tag and Commit (after version bump)
+      - name: Push Git Tag and Commit
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git push origin --tags
+          git push origin main
+
+      # Step 11: Create GitHub Release
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.next_version }}
+          release_name: Release ${{ env.next_version }}
+          body: |
+            ## Changes
+            - Automatically generated release for version ${{ env.next_version }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # deploy:
+  #   name: auto-deploy
+  #   needs: auto-release
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Trigger RENDER deployment
+  #       run: |
+  #         curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
