@@ -1,0 +1,6 @@
+dist/
+dist-min/
+node_modules/
+.vscode/
+.env.production
+.env
