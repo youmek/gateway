@@ -1,6 +1,6 @@
 {
   "name": "gateway",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gateway acting as an entry point for client applications, routing requests to the appropriate backend microservices.",
   "main": "index.js",
   "scripts": {
